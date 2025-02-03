@@ -2,17 +2,17 @@
 # AUTHOR: Shun Zheng
 # DATE: 19-9-19
 
-import torch
-from torch import nn
-import torch.nn.functional as F
 import math
 
-from pytorch_pretrained_bert.modeling import PreTrainedBertModel, BertModel
+import torch
+import torch.nn.functional as F
+from torch import nn
+from transformers import BertModel, BertPreTrainedModel
 
 from . import transformer
 
 
-class BertForBasicNER(PreTrainedBertModel):
+class BertForBasicNER(BertPreTrainedModel):
     """BERT model for basic NER functionality.
     This module is composed of the BERT model with a linear layer on top of
     the output sequences.
@@ -43,13 +43,14 @@ class BertForBasicNER(PreTrainedBertModel):
 
     def __init__(self, config, num_entity_labels):
         super(BertForBasicNER, self).__init__(config)
-        self.bert = BertModel(config)
+        self.num_entity_labels = num_entity_labels
 
+        self.bert = BertModel(config)
         self.dropout = nn.Dropout(config.hidden_dropout_prob)
         self.classifier = nn.Linear(config.hidden_size, num_entity_labels)
-        self.apply(self.init_bert_weights)
 
-        self.num_entity_labels = num_entity_labels
+        # Initialize weights and apply final processing
+        self.post_init()
 
     def old_forward(self, input_ids, input_masks,
                     token_type_ids=None, label_ids=None,
@@ -97,10 +98,11 @@ class BertForBasicNER(PreTrainedBertModel):
         if input_masks.dtype != torch.uint8:
             input_masks = input_masks == 1
 
-        batch_seq_enc, _ = self.bert(input_ids,
+        outputs = self.bert(input_ids,
                                      attention_mask=input_masks,
-                                     output_all_encoded_layers=False)
+                                     output_hidden_states=False)
         # [batch_size, seq_len, hidden_size]
+        batch_seq_enc = outputs[0]
         batch_seq_enc = self.dropout(batch_seq_enc)
         # [batch_size, seq_len, num_entity_labels]
         batch_seq_logits = self.classifier(batch_seq_enc)
