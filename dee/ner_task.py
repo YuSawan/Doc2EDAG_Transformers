@@ -2,18 +2,18 @@
 # AUTHOR: Shun Zheng
 # DATE: 19-9-19
 
-import torch
+import json
 import logging
 import os
-import json
-from torch.utils.data import TensorDataset
 from collections import defaultdict
 
-from .utils import default_load_json, default_dump_json, EPS, BERTChineseCharacterTokenizer
+import torch
+from torch.utils.data import TensorDataset
+
+from .base_task import BasePytorchTask, TaskSetting
 from .event_type import common_fields, event_type_fields_list
 from .ner_model import BertForBasicNER, judge_ner_prediction
-from .base_task import TaskSetting, BasePytorchTask
-
+from .utils import EPS, BERTCharacterTokenizer, default_dump_json, default_load_json
 
 logger = logging.getLogger(__name__)
 
@@ -329,7 +329,7 @@ class NERTask(BasePytorchTask):
         # initialize entity label list
         self.entity_label_list = NERExample.get_entity_label_list()
         # initialize tokenizer
-        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
+        self.tokenizer = BERTCharacterTokenizer.from_pretrained(self.setting.bert_model, token='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')
         # initialize feature converter
         self.feature_converter_func = NERFeatureConverter(
             self.entity_label_list, self.setting.max_seq_len, self.tokenizer
@@ -343,7 +343,7 @@ class NERTask(BasePytorchTask):
 
         # build model
         if build_model:
-            self.model = BertForBasicNER.from_pretrained(self.setting.bert_model, len(self.entity_label_list))
+            self.model = BertForBasicNER.from_pretrained(self.setting.bert_model, len(self.entity_label_list), token='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')
             self.setting.update_by_dict(self.model.config.__dict__)  # BertConfig dictionary
             self._decorate_model(parallel_decorate=parallel_decorate)
 

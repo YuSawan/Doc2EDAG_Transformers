@@ -4,27 +4,36 @@
 
 import logging
 import os
-import torch.optim as optim
-import torch.distributed as dist
 from itertools import product
 
-from .dee_helper import logger, DEEExample, DEEExampleLoader, DEEFeatureConverter, \
-    convert_dee_features_to_dataset, prepare_doc_batch_dict, measure_dee_prediction, \
-    decode_dump_template, eval_dump_template
-from .utils import BERTChineseCharacterTokenizer, default_dump_json, default_load_pkl
-from .ner_model import BertForBasicNER
-from .base_task import TaskSetting, BasePytorchTask
+import torch.distributed as dist
+import torch.optim as optim
+
+from .base_task import BasePytorchTask, TaskSetting
+from .dee_helper import (
+    DEEExample,
+    DEEExampleLoader,
+    DEEFeatureConverter,
+    convert_dee_features_to_dataset,
+    decode_dump_template,
+    eval_dump_template,
+    logger,
+    measure_dee_prediction,
+    prepare_doc_batch_dict,
+)
+from .dee_model import DCFEEModel, Doc2EDAGModel
 from .event_type import event_type_fields_list
-from .dee_model import Doc2EDAGModel, DCFEEModel
+from .ner_model import BertForBasicNER
+from .utils import BERTCharacterTokenizer, default_dump_json, default_load_pkl
 
 
 class DEETaskSetting(TaskSetting):
     base_key_attrs = TaskSetting.base_key_attrs
     base_attr_default_pairs = [
-        ('train_file_name', 'train.json'),
+        ('train_file_name', 'sample_train.json'),
         ('dev_file_name', 'dev.json'),
         ('test_file_name', 'test.json'),
-        ('summary_dir_name', '/tmp/Summary'),
+        ('summary_dir_name', './tmp/Summary'),
         ('max_sent_len', 128),
         ('max_sent_num', 64),
         ('train_batch_size', 64),
@@ -80,7 +89,7 @@ class DEETask(BasePytorchTask):
         self.logger = logging.getLogger(self.__class__.__name__)
         self.logging('Initializing {}'.format(self.__class__.__name__))
 
-        self.tokenizer = BERTChineseCharacterTokenizer.from_pretrained(self.setting.bert_model)
+        self.tokenizer = BERTCharacterTokenizer.from_pretrained(self.setting.bert_model, token='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')
         self.setting.vocab_size = len(self.tokenizer.vocab)
 
         # get entity and event label name
@@ -122,10 +131,12 @@ class DEETask(BasePytorchTask):
             self.setting.num_entity_labels = len(self.entity_label_list)
 
         if self.setting.use_bert:
+            model_type = self.setting.model_type
             ner_model = BertForBasicNER.from_pretrained(
-                self.setting.bert_model, num_entity_labels = self.setting.num_entity_labels
+                self.setting.bert_model, num_entity_labels = self.setting.num_entity_labels, token='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',
             )
             self.setting.update_by_dict(ner_model.config.__dict__)  # BertConfig dictionary
+            self.setting.model_type = model_type
 
             # substitute pooler in bert to support distributed training
             # because unused parameters will cause errors when conducting distributed all_reduce
@@ -237,7 +248,7 @@ class DEETask(BasePytorchTask):
             loss = self.model(
                 doc_batch_dict, features, use_gold_span=use_gold_span, train_flag=True, teacher_prob=teacher_prob
             )
-        except Exception as e:
+        except Exception:
             print('-'*30)
             print('Exception occurs when processing ' +
                   ','.join([features[ex_idx].guid for ex_idx in doc_batch_dict['ex_idx']]))
@@ -356,7 +367,7 @@ class DEETask(BasePytorchTask):
                 try:
                     epoch = int(fn.split('.')[-1])
                     prev_epochs.append(epoch)
-                except Exception as e:
+                except Exception:
                     continue
         prev_epochs.sort()
 
